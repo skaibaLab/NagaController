@@ -1,3 +1,7 @@
+local isProcessing = false
+local lastTriggerTime = 0
+local DEBOUNCE_MS = 100  -- Minimum ms between triggers
+
 local function focusVSCodeWindow(n)
     local app = hs.application.get("com.microsoft.VSCode")
     if not app then
@@ -22,44 +26,69 @@ local function focusVSCodeWindow(n)
     end
 
     local win = windows[n]
-    hs.alert.show(n .. ": " .. (win:title() or "Untitled"), 0.5)
     win:focus()
 end
 
--- Keycodes for 1-6 keys
 local keycodes = {
-    [18] = 1,  -- 1
-    [19] = 2,  -- 2
-    [20] = 3,  -- 3
-    [21] = 4,  -- 4
-    [23] = 5,  -- 5
-    [22] = 6,  -- 6
+    [18] = 1,
+    [19] = 2,
+    [20] = 3,
+    [21] = 4,
+    [23] = 5,
+    [22] = 6,
 }
 
--- Use eventtap to catch synthetic key events from NagaController
-local vscodeSwitcher = hs.eventtap.new({hs.eventtap.event.types.keyDown}, function(event)
-    local keycode = event:getKeyCode()
-    local flags = event:getFlags()
-    
-    -- Check for cmd+ctrl modifier combo
-    if flags.cmd and flags.ctrl and not flags.alt and not flags.shift then
-        local windowNum = keycodes[keycode]
-        if windowNum then
-            focusVSCodeWindow(windowNum)
-            return true  -- Consume the event
-        end
+local vscodeSwitcher = nil
+
+local function createEventTap()
+    if vscodeSwitcher then
+        vscodeSwitcher:stop()
     end
     
-    return false  -- Let other events pass through
-end)
+    vscodeSwitcher = hs.eventtap.new({hs.eventtap.event.types.keyDown}, function(event)
+        local keycode = event:getKeyCode()
+        local flags = event:getFlags()
+        
+        if flags.cmd and flags.ctrl and not flags.alt and not flags.shift then
+            local windowNum = keycodes[keycode]
+            if windowNum then
+                local now = hs.timer.secondsSinceEpoch() * 1000
+                
+                -- Debounce and prevent overlapping calls
+                if isProcessing or (now - lastTriggerTime) < DEBOUNCE_MS then
+                    return true
+                end
+                
+                lastTriggerTime = now
+                isProcessing = true
+                
+                hs.timer.doAfter(0, function()
+                    pcall(function()
+                        focusVSCodeWindow(windowNum)
+                    end)
+                    isProcessing = false
+                end)
+                
+                return true
+            end
+        end
+        
+        return false
+    end)
+    
+    vscodeSwitcher:start()
+    return vscodeSwitcher
+end
 
-vscodeSwitcher:start()
--- -- Optional: bring VSCode frontmost
--- hs.hotkey.bind({"cmd", "ctrl"}, "C", function()
---     local app = hs.application.get("com.microsoft.VSCode")
---     if app then
---         app:activate()
---     else
---         hs.alert.show("VSCode not running")
---     end
--- end)
+-- Create initial eventtap
+createEventTap()
+
+-- Watchdog: restart eventtap if it stops running
+hs.timer.doEvery(5, function()
+    if not vscodeSwitcher or not vscodeSwitcher:isEnabled() then
+        print("Restarting VSCode switcher eventtap")
+        createEventTap()
+    end
+    -- Reset stuck processing flag
+    isProcessing = false
+end)
