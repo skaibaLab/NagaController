@@ -6,7 +6,7 @@ final class HIDListener {
 
     private var manager: IOHIDManager
     private let queue = DispatchQueue(label: "HIDListener.queue")
-2222222
+
     // Recent button presses from the Naga device (by logical button index 1..12)
     // Value is timestamp (seconds since reference)
     private var recentPressTimestamps: [Int: TimeInterval] = [:]
