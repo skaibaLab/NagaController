@@ -29,7 +29,7 @@ final class ButtonMapper {
     }
 
     // Handle physical button press (down). For single-key mappings, send keyDown and remember for hold.
-    func handlePress(buttonIndex: Int) {
+    func handlePress(buttonIndex: Int, currentModifiers: CGEventFlags = []) {
         guard let action = mapping[buttonIndex] else {
             NSLog("[Mapping] No action mapped for button \(buttonIndex).")
             return
@@ -38,18 +38,22 @@ final class ButtonMapper {
         case .keySequence(let keys, _):
             if let stroke = keys.first, keys.count == 1 {
                 let keyCode = effectiveKeyCode(for: stroke)
-                let flags = modifierFlags(from: stroke.modifiers)
+                // Merge mapped modifiers with currently held physical modifiers
+                let mappedFlags = modifierFlags(from: stroke.modifiers)
+                let modifiersToAdd = mappedFlags.union(currentModifiers)
                 if let code = keyCode, let eventDown = CGEvent(keyboardEventSource: nil, virtualKey: code, keyDown: true) {
-                    eventDown.flags = flags
+                    // Preserve existing system flags and add our modifiers
+                    eventDown.flags.formUnion(modifiersToAdd)
+                    let finalFlags = eventDown.flags
                     eventDown.post(tap: .cghidEventTap)
-                    activeHolds[buttonIndex] = (code, flags)
-                    NSLog("[Mapping] Hold start for button \(buttonIndex) -> key=\(stroke.displayLabel), flags=\(flags)")
+                    activeHolds[buttonIndex] = (code, finalFlags)
+                    NSLog("[Mapping] Hold start for button \(buttonIndex) -> key=\(stroke.displayLabel), flags=\(finalFlags)")
                 } else {
                     // If no keycode, fallback to sending sequence taps to stay functional
-                    for stroke in keys { sendKeyStroke(stroke) }
+                    for stroke in keys { sendKeyStroke(stroke, additionalModifiers: currentModifiers) }
                 }
             } else {
-                for stroke in keys { sendKeyStroke(stroke) }
+                for stroke in keys { sendKeyStroke(stroke, additionalModifiers: currentModifiers) }
             }
         default:
             perform(action: action)
@@ -57,7 +61,7 @@ final class ButtonMapper {
     }
 
     // Handle physical button release (up). If we are holding, send keyUp and clear state.
-    func handleRelease(buttonIndex: Int) {
+    func handleRelease(buttonIndex: Int, currentModifiers: CGEventFlags = []) {
         if let (keyCode, flags) = activeHolds.removeValue(forKey: buttonIndex) {
             if let eventUp = CGEvent(keyboardEventSource: nil, virtualKey: keyCode, keyDown: false) {
                 eventUp.flags = flags
@@ -86,20 +90,23 @@ final class ButtonMapper {
         }
     }
 
-    private func sendKeyStroke(_ stroke: KeyStroke) {
+    private func sendKeyStroke(_ stroke: KeyStroke, additionalModifiers: CGEventFlags = []) {
         // Map simple keys (letters) to key codes; limited for Phase 1
         guard let keyCode = effectiveKeyCode(for: stroke) else { return }
 
-        let flags = modifierFlags(from: stroke.modifiers)
+        let mappedFlags = modifierFlags(from: stroke.modifiers)
+        let modifiersToAdd = mappedFlags.union(additionalModifiers)
 
         // Key down
         if let eventDown = CGEvent(keyboardEventSource: nil, virtualKey: keyCode, keyDown: true) {
-            eventDown.flags = flags
+            // Preserve existing system flags and add our modifiers
+            eventDown.flags.formUnion(modifiersToAdd)
             eventDown.post(tap: .cghidEventTap)
         }
         // Key up
         if let eventUp = CGEvent(keyboardEventSource: nil, virtualKey: keyCode, keyDown: false) {
-            eventUp.flags = flags
+            // Preserve existing system flags and add our modifiers
+            eventUp.flags.formUnion(modifiersToAdd)
             eventUp.post(tap: .cghidEventTap)
         }
     }
@@ -123,6 +130,7 @@ final class ButtonMapper {
             default: break
             }
         }
+        NSLog("[ButtonMapper] Created modifier flags from \(modifiers.count) modifiers: \(modifiers.joined(separator: "+"))")
         return flags
     }
 

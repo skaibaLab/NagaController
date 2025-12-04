@@ -15,6 +15,13 @@
             { "key": "v", "modifiers": ["cmd"] }
           ],
           "description": "Paste"
+        },
+        "3": {
+          "type": "keySequence",
+          "keys": [
+            { "key": "3", "modifiers": ["cmd", "ctrl"] }
+          ],
+          "description": "Example: Cmd+Ctrl+3"
         }
       }
     }

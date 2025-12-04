@@ -6,7 +6,7 @@ final class HIDListener {
 
     private var manager: IOHIDManager
     private let queue = DispatchQueue(label: "HIDListener.queue")
-
+2222222
     // Recent button presses from the Naga device (by logical button index 1..12)
     // Value is timestamp (seconds since reference)
     private var recentPressTimestamps: [Int: TimeInterval] = [:]
@@ -15,7 +15,12 @@ final class HIDListener {
     private let recentWindow: TimeInterval = 1.00
     private let dpiUpCookie: IOHIDElementCookie = IOHIDElementCookie(0x26b)
     private let dpiDownCookie: IOHIDElementCookie = IOHIDElementCookie(0x26d)
+    private let scrollTiltCookie: IOHIDElementCookie = IOHIDElementCookie(0x66)  // Horizontal scroll tilt (usagePage=0xc, usage=0x238)
     private var syntheticStates: [Int: Bool] = [:]
+    private var lastScrollTiltValue: Int = 0  // Track last tilt value to prevent duplicate processing
+    private var tiltActionFired: Bool = false  // Track if we've already fired an action for current tilt gestureaaaaa
+    private var lastTiltGestureTime: TimeInterval = 0  // Track when last tilt gesture completed
+    private let tiltGestureCooldown: TimeInterval = 0.25  // Minimum time between tilt gestures (250ms)
 
     private init() {
         manager = IOHIDManagerCreate(kCFAllocatorDefault, IOOptionBits(kIOHIDOptionsTypeNone))
@@ -75,6 +80,55 @@ final class HIDListener {
                 handleSynthetic(buttonIndex: 13, pressed: (pressedValue & 0x80) != 0, rawValue: pressedValue)
             } else if cookie == dpiDownCookie {
                 handleSynthetic(buttonIndex: 14, pressed: (pressedValue & 0x40) != 0, rawValue: pressedValue)
+            } else if cookie == scrollTiltCookie {
+                // Scroll tilt uses same cookie but different values: -1 = left, 1 = right
+                // Mouse sends alternating values (e.g., -1, 0, -1, 0...) so we need to only
+                // trigger on the FIRST non-zero value, then wait for stable return to 0
+                let intValue = Int(pressedValue)
+                NSLog("[HID] Scroll tilt cookie MATCHED: cookie=0x\(String(UInt32(cookie), radix: 16)), value=\(intValue), lastValue=\(lastScrollTiltValue), actionFired=\(tiltActionFired)")
+
+                // Check state and determine action (thread-safe)
+                let (shouldFireLeft, shouldFireRight, shouldRelease) = queue.sync { () -> (Bool, Bool, Bool) in
+                    let now = CFAbsoluteTimeGetCurrent()
+                    let timeSinceLastGesture = now - lastTiltGestureTime
+
+                    let isNewTilt = (lastScrollTiltValue == 0 && intValue != 0)
+                    let isRelease = (lastScrollTiltValue != 0 && intValue == 0)
+
+                    lastScrollTiltValue = intValue
+
+                    // Only fire if enough time has passed since last gesture completed
+                    if isNewTilt && !tiltActionFired && timeSinceLastGesture >= tiltGestureCooldown {
+                        // First non-zero value in this gesture - fire the action
+                        tiltActionFired = true
+                        lastTiltGestureTime = now
+                        return (intValue == -1, intValue == 1, false)
+                    } else if isRelease && tiltActionFired {
+                        // Returned to neutral - reset for next gesture
+                        tiltActionFired = false
+                        return (false, false, true)
+                    } else if intValue == 0 && !tiltActionFired {
+                        // Stable at 0, ensure we're ready for next gesture
+                        tiltActionFired = false
+                    }
+                    // All other events (duplicate -1s, 1s, or 0s mid-gesture) are ignored
+                    return (false, false, false)
+                }
+
+                // Execute actions outside the sync block to avoid deadlock
+                if shouldFireLeft {
+                    handleSynthetic(buttonIndex: 16, pressed: false, rawValue: 0) // Ensure right is released
+                    handleSynthetic(buttonIndex: 15, pressed: true, rawValue: pressedValue)
+                    NSLog("[HID] Scroll tilt LEFT - action fired")
+                } else if shouldFireRight {
+                    handleSynthetic(buttonIndex: 15, pressed: false, rawValue: 0) // Ensure left is released
+                    handleSynthetic(buttonIndex: 16, pressed: true, rawValue: pressedValue)
+                    NSLog("[HID] Scroll tilt RIGHT - action fired")
+                } else if shouldRelease {
+                    handleSynthetic(buttonIndex: 15, pressed: false, rawValue: pressedValue)
+                    handleSynthetic(buttonIndex: 16, pressed: false, rawValue: pressedValue)
+                    NSLog("[HID] Scroll tilt RELEASED - ready for next gesture")
+                }
             } else {
                 let vendor = HIDListener.vendorID(device: device)
                 let product = (IOHIDDeviceGetProperty(device, kIOHIDProductKey as CFString) as? String) ?? "<unknown>"

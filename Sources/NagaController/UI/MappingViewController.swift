@@ -118,7 +118,7 @@ final class MappingViewController: NSViewController {
         dpiStack.orientation = .vertical
         dpiStack.spacing = 12
         dpiStack.translatesAutoresizingMaskIntoConstraints = false
-        for idx in [13, 14] {
+        for idx in [13, 14, 15, 16] {
             let card = makeCard(for: idx)
             rowViews[idx] = card
             dpiStack.addArrangedSubview(card)
@@ -320,6 +320,8 @@ final class MappingViewController: NSViewController {
         switch index {
         case 13: return "DPI Up"
         case 14: return "DPI Down"
+        case 15: return "Scroll Tilt Left"
+        case 16: return "Scroll Tilt Right"
         default: return "Button \(index)"
         }
     }
@@ -332,7 +334,7 @@ final class MappingViewController: NSViewController {
 
     private func refreshRows() {
         let mapping = ConfigManager.shared.mappingForCurrentProfile()
-        for i in 1...14 {
+        for i in 1...16 {
             descLabels[i]?.stringValue = actionDescription(mapping[i])
         }
         headerLabel.stringValue = "Button Mappings — \(ConfigManager.shared.currentProfileName)"

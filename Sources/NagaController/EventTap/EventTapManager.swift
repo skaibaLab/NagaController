@@ -116,7 +116,7 @@ final class EventTapManager {
                         }
                     }
                     if recent {
-                        ButtonMapper.shared.handlePress(buttonIndex: buttonIndex)
+                        ButtonMapper.shared.handlePress(buttonIndex: buttonIndex, currentModifiers: event.flags)
                         manager.activeDownButtons.insert(buttonIndex)
                         return nil
                     }
@@ -126,7 +126,7 @@ final class EventTapManager {
                 if manager.activeDownButtons.contains(buttonIndex) {
                     manager.activeDownButtons.remove(buttonIndex)
                     if !manager.isListeningOnly {
-                        ButtonMapper.shared.handleRelease(buttonIndex: buttonIndex)
+                        ButtonMapper.shared.handleRelease(buttonIndex: buttonIndex, currentModifiers: event.flags)
                     }
                     return nil
                 }

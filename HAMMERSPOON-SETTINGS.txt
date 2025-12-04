@@ -1,0 +1,65 @@
+local function focusVSCodeWindow(n)
+    local app = hs.application.get("com.microsoft.VSCode")
+    if not app then
+        hs.alert.show("VSCode not running")
+        return
+    end
+
+    local windows = app:allWindows()
+    
+    table.sort(windows, function(a, b)
+        return a:id() < b:id()
+    end)
+
+    if #windows == 0 then
+        hs.alert.show("No VSCode windows")
+        return
+    end
+
+    if n > #windows then
+        hs.alert.show("Only " .. #windows .. " VSCode window(s)")
+        return
+    end
+
+    local win = windows[n]
+    hs.alert.show(n .. ": " .. (win:title() or "Untitled"), 0.5)
+    win:focus()
+end
+
+-- Keycodes for 1-6 keys
+local keycodes = {
+    [18] = 1,  -- 1
+    [19] = 2,  -- 2
+    [20] = 3,  -- 3
+    [21] = 4,  -- 4
+    [23] = 5,  -- 5
+    [22] = 6,  -- 6
+}
+
+-- Use eventtap to catch synthetic key events from NagaController
+local vscodeSwitcher = hs.eventtap.new({hs.eventtap.event.types.keyDown}, function(event)
+    local keycode = event:getKeyCode()
+    local flags = event:getFlags()
+    
+    -- Check for cmd+ctrl modifier combo
+    if flags.cmd and flags.ctrl and not flags.alt and not flags.shift then
+        local windowNum = keycodes[keycode]
+        if windowNum then
+            focusVSCodeWindow(windowNum)
+            return true  -- Consume the event
+        end
+    end
+    
+    return false  -- Let other events pass through
+end)
+
+vscodeSwitcher:start()
+-- -- Optional: bring VSCode frontmost
+-- hs.hotkey.bind({"cmd", "ctrl"}, "C", function()
+--     local app = hs.application.get("com.microsoft.VSCode")
+--     if app then
+--         app:activate()
+--     else
+--         hs.alert.show("VSCode not running")
+--     end
+-- end)

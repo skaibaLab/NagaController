@@ -397,6 +397,11 @@ final class ActionEditorViewController: NSViewController {
 
         recordedKeyCode = keyCode
         recordedKeyIdentifier = canonical
+
+        // Debug logging to verify multi-modifier capture
+        let mods = currentModifiers()
+        NSLog("[ActionEditor] Captured key: \(canonical), modifiers: \(mods.joined(separator: "+"))")
+
         updateKeyFieldDisplay()
     }
 
